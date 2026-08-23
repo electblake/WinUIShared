@@ -12,16 +12,23 @@
         <converters:CollectionVisibilityConverter x:Name="CollectionVisibilityConverter"/>
     </UserControl.Resources>
 
-    <Grid Visibility="{x:Bind viewModel.Gpus, Mode=OneWay, Converter={StaticResource CollectionVisibilityConverter}}">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
-        <CheckBox Name="UseHardwareAccel" Checked="OnChecked" Unchecked="OnUnchecked">
-            <TextBlock TextTrimming="CharacterEllipsis">Hardware acceleration</TextBlock>
-        </CheckBox>
-        <controls:ComboBoxEx Grid.Column="1" ItemsSource="{x:Bind viewModel.Gpus, Mode=OneWay}" HorizontalAlignment="Center" Margin="10,0,0,0"
-                  SelectedItem="{x:Bind SelectedGpu, Mode=TwoWay}" Visibility="{x:Bind UseHardwareAccel.IsChecked, Mode=OneWay}"/>
-    </Grid>
+    <StackPanel Spacing="16">
+        <Grid Visibility="{x:Bind viewModel.Gpus, Mode=OneWay, Converter={StaticResource CollectionVisibilityConverter}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <CheckBox Name="UseHardwareAccel" Checked="OnChecked" Unchecked="OnUnchecked">
+                <TextBlock TextTrimming="CharacterEllipsis">Hardware acceleration</TextBlock>
+            </CheckBox>
+            <controls:ComboBoxEx Grid.Column="1" ItemsSource="{x:Bind viewModel.Gpus, Mode=OneWay}" HorizontalAlignment="Center" Margin="10,0,0,0"
+                                 SelectedItem="{x:Bind SelectedGpu, Mode=TwoWay}" Visibility="{x:Bind UseHardwareAccel.IsChecked, Mode=OneWay}"/>
+        </Grid>
+        <StackPanel Spacing="6">
+            <TextBlock Text="System graphics diagnostics" Style="{StaticResource SubtitleTextBlockStyle}"/>
+            <TextBlock Text="{x:Bind viewModel.GraphicsDebugInfo, Mode=OneWay}" FontFamily="Consolas"
+                       Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+        </StackPanel>
+    </StackPanel>
 
 </UserControl>

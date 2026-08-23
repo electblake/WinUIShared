@@ -210,7 +210,7 @@ namespace WinUIShared.Helpers
         public void EnableHardwareDecoding(bool enable) => disableHardwareDecoding = !enable;
 
         public delegate void ProgressEventHandler(double progressPercent, TimeSpan currentTime, TimeSpan duration, int currentFrame,
-            double currentFps, TimeSpan estimatedTimeRemaining);
+            double currentFps, double currentSpeed);
         public delegate void LineWatchHandler(string line);
         private DataReceivedEventHandler ProgressToDataReceivedEventHandler(ProgressEventHandler progressHandler, LineWatchHandler? lineWatcher)
         {
@@ -236,9 +236,8 @@ namespace WinUIShared.Helpers
                     var currentTime = TimeSpan.Parse(matchCollection[0].Groups["time"].Value);
                     var currentFps = double.Parse(matchCollection[0].Groups["fps"].Value, CultureInfo.InvariantCulture);
                     var speed = double.Parse(matchCollection[0].Groups["speed"].Value, CultureInfo.InvariantCulture);
-                    var estimatedTimeRemaining = (duration - currentTime) / speed;
                     progressHandler.Invoke(currentTime / duration * ProgressMax, currentTime, duration,
-                        int.Parse(matchCollection[0].Groups["frame"].Value), currentFps, estimatedTimeRemaining);
+                        int.Parse(matchCollection[0].Groups["frame"].Value), currentFps, speed);
                 }
             };
         }

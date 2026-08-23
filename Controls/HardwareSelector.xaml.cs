@@ -21,10 +21,22 @@ namespace WinUIShared.Controls
             typeof(HardwareSelector),
             new PropertyMetadata(null, OnSelectedGPUChanged));
 
+        public static readonly DependencyProperty FfmpegPathProperty = DependencyProperty.Register(
+            nameof(FfmpegPath),
+            typeof(string),
+            typeof(HardwareSelector),
+            new PropertyMetadata(string.Empty));
+
         public GpuInfo? SelectedGpu
         {
             get => (GpuInfo?)GetValue(SelectedGpuProperty);
             set => SetValue(SelectedGpuProperty, value);
+        }
+
+        public string FfmpegPath
+        {
+            get => (string)GetValue(FfmpegPathProperty);
+            set => SetValue(FfmpegPathProperty, value);
         }
 
         public HardwareSelector()
@@ -35,6 +47,7 @@ namespace WinUIShared.Controls
         private async void HardwareSelector_OnLoaded(object sender, RoutedEventArgs e)
         {
             var gpuList = new List<GpuInfo>();
+            var graphicsDebugLines = new List<string>();
             var nvidiaCount = 0;
             var intelCount = 0;
             Process process = new()
@@ -42,7 +55,7 @@ namespace WinUIShared.Controls
                 StartInfo = new ProcessStartInfo()
                 {
                     FileName = "powershell",
-                    Arguments = "-NoProfile -Command \"Get-CimInstance Win32_VideoController | ForEach-Object { \\\"$($_.Caption);$($_.DeviceID);$($_.AdapterCompatibility)\\\" }\"",
+                    Arguments = "-NoProfile -Command \"Get-CimInstance Win32_VideoController | ForEach-Object { \\\"$($_.Caption);$($_.DeviceID);$($_.AdapterCompatibility);$($_.DriverVersion);$($_.AdapterRAM);$($_.VideoModeDescription);$($_.Status)\\\" }\"",
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
                 },
@@ -53,7 +66,7 @@ namespace WinUIShared.Controls
                 if (string.IsNullOrWhiteSpace(args.Data)) return;
                 Debug.WriteLine(args.Data);
                 var line = args.Data.Split(';');
-                if (line.Length != 3) return;
+                if (line.Length != 7) return;
                 if (!int.TryParse(line[1]["VideoController".Length..], out var deviceId)) return;
                 var vendor = GetGpuVendor(line[2]);
                 var index = vendor switch
@@ -63,15 +76,71 @@ namespace WinUIShared.Controls
                     _ => deviceId - 1
                 };
                 gpuList.Add(new GpuInfo(line[0], index, vendor));
+                graphicsDebugLines.Add($"Adapter: {line[0]}");
+                graphicsDebugLines.Add($"  Vendor: {line[2]}");
+                graphicsDebugLines.Add($"  Driver: {line[3]}");
+                graphicsDebugLines.Add($"  Memory: {line[4]} bytes");
+                graphicsDebugLines.Add($"  Video mode: {line[5]}");
+                graphicsDebugLines.Add($"  Device status: {line[6]}");
             };
             process.Start();
             process.BeginOutputReadLine();
             await process.WaitForExitAsync();
+            graphicsDebugLines.Add($"Graphics query exit code: {process.ExitCode}");
             process.Dispose();
+
+            Process hardwareAccelerationProcess = new()
+            {
+                StartInfo = new ProcessStartInfo()
+                {
+                    FileName = FfmpegPath,
+                    Arguments = "-hide_banner -hwaccels",
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                }
+            };
+            hardwareAccelerationProcess.Start();
+            var hardwareAccelerators = await hardwareAccelerationProcess.StandardOutput.ReadToEndAsync();
+            await hardwareAccelerationProcess.WaitForExitAsync();
+            graphicsDebugLines.Add(string.Empty);
+            graphicsDebugLines.Add("FFmpeg hardware backends:");
+            graphicsDebugLines.Add($"  CUDA: {GetCapabilityStatus(hardwareAccelerators, "cuda")}");
+            graphicsDebugLines.Add($"  D3D11VA: {GetCapabilityStatus(hardwareAccelerators, "d3d11va")}");
+            graphicsDebugLines.Add($"  Intel QSV: {GetCapabilityStatus(hardwareAccelerators, "qsv")}");
+            graphicsDebugLines.Add($"  Query exit code: {hardwareAccelerationProcess.ExitCode}");
+            hardwareAccelerationProcess.Dispose();
+
+            Process encoderProcess = new()
+            {
+                StartInfo = new ProcessStartInfo()
+                {
+                    FileName = FfmpegPath,
+                    Arguments = "-hide_banner -encoders",
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                }
+            };
+            encoderProcess.Start();
+            var encoders = await encoderProcess.StandardOutput.ReadToEndAsync();
+            await encoderProcess.WaitForExitAsync();
+            graphicsDebugLines.Add("FFmpeg HEVC encoders:");
+            graphicsDebugLines.Add($"  NVIDIA NVENC: {GetCapabilityStatus(encoders, "hevc_nvenc")}");
+            graphicsDebugLines.Add($"  AMD AMF: {GetCapabilityStatus(encoders, "hevc_amf")}");
+            graphicsDebugLines.Add($"  Intel QSV: {GetCapabilityStatus(encoders, "hevc_qsv")}");
+            graphicsDebugLines.Add($"  Software x265: {GetCapabilityStatus(encoders, "libx265")}");
+            graphicsDebugLines.Add($"  Query exit code: {encoderProcess.ExitCode}");
+            encoderProcess.Dispose();
+
             lastSelectedGpu = SelectedGpu;
             viewModel.Gpus = new ObservableCollection<GpuInfo>(gpuList);
+            viewModel.GraphicsDebugInfo = string.Join(Environment.NewLine, graphicsDebugLines);
             if(SelectedGpu != lastSelectedGpu) SelectedGpu = lastSelectedGpu;
             else if(SelectedGpu != null) OnSelectedGPUChanged(this);
+
+            static string GetCapabilityStatus(string capabilities, string capability)
+            {
+                return capabilities.Contains(capability, StringComparison.OrdinalIgnoreCase) ? "Supported" : "Not supported";
+            }
 
             static GpuVendor GetGpuVendor(string adapterCompatibility)
             {
@@ -123,10 +192,16 @@ namespace WinUIShared.Controls
     internal class ViewModel: INotifyPropertyChanged
     {
         private ObservableCollection<GpuInfo> _gpus;
+        private string _graphicsDebugInfo = "Checking graphics capabilities…";
         public ObservableCollection<GpuInfo> Gpus
         {
             get => _gpus;
             set => SetProperty(ref _gpus, value);
+        }
+        public string GraphicsDebugInfo
+        {
+            get => _graphicsDebugInfo;
+            set => SetProperty(ref _graphicsDebugInfo, value);
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
