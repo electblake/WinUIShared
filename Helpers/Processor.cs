@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -208,7 +209,8 @@ namespace WinUIShared.Helpers
 
         public void EnableHardwareDecoding(bool enable) => disableHardwareDecoding = !enable;
 
-        public delegate void ProgressEventHandler(double progressPercent, TimeSpan currentTime, TimeSpan duration, int currentFrame);
+        public delegate void ProgressEventHandler(double progressPercent, TimeSpan currentTime, TimeSpan duration, int currentFrame,
+            double currentFps, TimeSpan estimatedTimeRemaining);
         public delegate void LineWatchHandler(string line);
         private DataReceivedEventHandler ProgressToDataReceivedEventHandler(ProgressEventHandler progressHandler, LineWatchHandler? lineWatcher)
         {
@@ -228,12 +230,15 @@ namespace WinUIShared.Helpers
                 if (!args.Data.StartsWith("frame")) return;
                 if (!CheckNoSpaceDuringProcess(args.Data))
                 {
-                    var matchCollection =
-                        Regex.Matches(args.Data, @"^frame=\s*(\d+)\s.+?time=(\d{2}:\d{2}:\d{2}\.\d{2}).+");
+                    var matchCollection = Regex.Matches(args.Data,
+                        @"^frame=\s*(?<frame>\d+)\s+fps=\s*(?<fps>[\d.]+).+?time=(?<time>\d{2}:\d{2}:\d{2}\.\d{2}).+?speed=\s*(?<speed>(?:[1-9]\d*(?:\.\d+)?|0\.\d*[1-9]\d*))x");
                     if (matchCollection.Count == 0) return;
-                    var currentTime = TimeSpan.Parse(matchCollection[0].Groups[2].Value);
+                    var currentTime = TimeSpan.Parse(matchCollection[0].Groups["time"].Value);
+                    var currentFps = double.Parse(matchCollection[0].Groups["fps"].Value, CultureInfo.InvariantCulture);
+                    var speed = double.Parse(matchCollection[0].Groups["speed"].Value, CultureInfo.InvariantCulture);
+                    var estimatedTimeRemaining = (duration - currentTime) / speed;
                     progressHandler.Invoke(currentTime / duration * ProgressMax, currentTime, duration,
-                        int.Parse(matchCollection[0].Groups[1].Value));
+                        int.Parse(matchCollection[0].Groups["frame"].Value), currentFps, estimatedTimeRemaining);
                 }
             };
         }
