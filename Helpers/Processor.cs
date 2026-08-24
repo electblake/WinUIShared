@@ -249,7 +249,9 @@ namespace WinUIShared.Helpers
 
         protected Task<bool> StartFfmpegProcess(string arguments, DataReceivedEventHandler? errorEventHandler, IntermediateProcessHandler? intermediateHandler = null)
         {
-            return StartProcess(ffmpegPath, $"-y {arguments}", null, errorEventHandler, intermediateHandler);
+            var ffmpegArguments = $"-y {arguments}";
+            leftTextPrimary.Report($"{ffmpegPath} {ffmpegArguments}");
+            return StartProcess(ffmpegPath, ffmpegArguments, null, errorEventHandler, intermediateHandler);
         }
 
         protected Task<bool> StartFfmpegProcess(string arguments, ProgressEventHandler progressHandler, LineWatchHandler? lineWatcher = null, IntermediateProcessHandler? intermediateHandler = null)

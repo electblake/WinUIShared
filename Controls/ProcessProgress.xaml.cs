@@ -166,6 +166,7 @@ namespace WinUIShared.Controls
         public event EventHandler ResumeRequested;
         public event EventHandler CancelRequested;
         public event EventHandler CloseRequested;
+        public event RoutedEventHandler DoneRequested;
 
         public ProcessProgress()
         {
@@ -211,6 +212,11 @@ namespace WinUIShared.Controls
             }
 
             FlyoutBase.ShowAttachedFlyout((FrameworkElement)sender);
+        }
+
+        private void Done_OnClick(object sender, RoutedEventArgs e)
+        {
+            DoneRequested?.Invoke(this, e);
         }
 
         private void CancelProcess(object sender, RoutedEventArgs e)

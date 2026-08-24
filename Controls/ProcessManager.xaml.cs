@@ -22,6 +22,7 @@ namespace WinUIShared.Controls
             set { if (State != value) SetValue(StateProperty, value); }
         }
         public event EventHandler<OperationState> StateChanged;
+        public event RoutedEventHandler DoneRequested;
 
         public static readonly DependencyProperty ProcessorProperty = DependencyProperty.Register(
             nameof(Processor),
@@ -102,9 +103,11 @@ namespace WinUIShared.Controls
 
             selector.RegisterPropertyChangedCallback(HardwareSelector.SelectedGpuProperty, (sender, dp) =>
             {
-                if(selector.SelectedGpu != null) manager.Processor.EnableHardwareAccelParams(selector.SelectedGpu);
+                if (selector.SelectedGpu != null) manager.Processor.EnableHardwareAccelParams(selector.SelectedGpu);
                 else manager.Processor.DisableHardwareAccel();
             });
+            if (selector.SelectedGpu != null) manager.Processor.EnableHardwareAccelParams(selector.SelectedGpu);
+            else manager.Processor.DisableHardwareAccel();
         }
 
         private void ProcessProgress_OnPauseRequested(object? sender, EventArgs e)
@@ -126,6 +129,11 @@ namespace WinUIShared.Controls
         {
             await Processor.Cancel();
             State = OperationState.BeforeOperation;
+        }
+
+        private void ProcessProgress_OnDoneRequested(object sender, RoutedEventArgs e)
+        {
+            DoneRequested?.Invoke(this, e);
         }
 
         public async Task<string?> StartProcess(Task processTask)
