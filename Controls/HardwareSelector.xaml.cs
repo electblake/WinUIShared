@@ -7,11 +7,16 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 
 namespace WinUIShared.Controls
 {
     public sealed partial class HardwareSelector : UserControl
     {
+        private const string HardwareAccelerationEnabledSetting = "HardwareAcceleration.Enabled";
+        private const string HardwareAccelerationGpuNameSetting = "HardwareAcceleration.GpuName";
+        private const string HardwareAccelerationGpuIndexSetting = "HardwareAcceleration.GpuIndex";
+        private const string HardwareAccelerationGpuVendorSetting = "HardwareAcceleration.GpuVendor";
         private ViewModel viewModel = new();
         private GpuInfo? lastSelectedGpu;
 
@@ -21,33 +26,37 @@ namespace WinUIShared.Controls
             typeof(HardwareSelector),
             new PropertyMetadata(null, OnSelectedGPUChanged));
 
-        public static readonly DependencyProperty FfmpegPathProperty = DependencyProperty.Register(
-            nameof(FfmpegPath),
-            typeof(string),
-            typeof(HardwareSelector),
-            new PropertyMetadata(string.Empty));
-
         public GpuInfo? SelectedGpu
         {
             get => (GpuInfo?)GetValue(SelectedGpuProperty);
             set => SetValue(SelectedGpuProperty, value);
         }
 
-        public string FfmpegPath
-        {
-            get => (string)GetValue(FfmpegPathProperty);
-            set => SetValue(FfmpegPathProperty, value);
-        }
-
         public HardwareSelector()
         {
             InitializeComponent();
+            var settings = Windows.Storage.ApplicationData.Current.RoamingSettings.Values;
+            if (settings.ContainsKey(HardwareAccelerationGpuNameSetting))
+            {
+                var gpu = new GpuInfo(
+                    (string)settings[HardwareAccelerationGpuNameSetting],
+                    (int)settings[HardwareAccelerationGpuIndexSetting],
+                    (GpuVendor)(int)settings[HardwareAccelerationGpuVendorSetting]);
+                viewModel.Gpus = new ObservableCollection<GpuInfo>([gpu]);
+                lastSelectedGpu = gpu;
+                if (settings.ContainsKey(HardwareAccelerationEnabledSetting) &&
+                    (bool)settings[HardwareAccelerationEnabledSetting]) SelectedGpu = gpu;
+            }
         }
 
         private async void HardwareSelector_OnLoaded(object sender, RoutedEventArgs e)
         {
+            await LoadGpus();
+        }
+
+        private async Task LoadGpus()
+        {
             var gpuList = new List<GpuInfo>();
-            var graphicsDebugLines = new List<string>();
             var nvidiaCount = 0;
             var intelCount = 0;
             Process process = new()
@@ -76,70 +85,18 @@ namespace WinUIShared.Controls
                     _ => deviceId - 1
                 };
                 gpuList.Add(new GpuInfo(line[0], index, vendor));
-                graphicsDebugLines.Add($"Adapter: {line[0]}");
-                graphicsDebugLines.Add($"  Vendor: {line[2]}");
-                graphicsDebugLines.Add($"  Driver: {line[3]}");
-                graphicsDebugLines.Add($"  Memory: {line[4]} bytes");
-                graphicsDebugLines.Add($"  Video mode: {line[5]}");
-                graphicsDebugLines.Add($"  Device status: {line[6]}");
             };
             process.Start();
             process.BeginOutputReadLine();
             await process.WaitForExitAsync();
-            graphicsDebugLines.Add($"Graphics query exit code: {process.ExitCode}");
             process.Dispose();
 
-            Process hardwareAccelerationProcess = new()
-            {
-                StartInfo = new ProcessStartInfo()
-                {
-                    FileName = FfmpegPath,
-                    Arguments = "-hide_banner -hwaccels",
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                }
-            };
-            hardwareAccelerationProcess.Start();
-            var hardwareAccelerators = await hardwareAccelerationProcess.StandardOutput.ReadToEndAsync();
-            await hardwareAccelerationProcess.WaitForExitAsync();
-            graphicsDebugLines.Add(string.Empty);
-            graphicsDebugLines.Add("FFmpeg hardware backends:");
-            graphicsDebugLines.Add($"  CUDA: {GetCapabilityStatus(hardwareAccelerators, "cuda")}");
-            graphicsDebugLines.Add($"  D3D11VA: {GetCapabilityStatus(hardwareAccelerators, "d3d11va")}");
-            graphicsDebugLines.Add($"  Intel QSV: {GetCapabilityStatus(hardwareAccelerators, "qsv")}");
-            graphicsDebugLines.Add($"  Query exit code: {hardwareAccelerationProcess.ExitCode}");
-            hardwareAccelerationProcess.Dispose();
-
-            Process encoderProcess = new()
-            {
-                StartInfo = new ProcessStartInfo()
-                {
-                    FileName = FfmpegPath,
-                    Arguments = "-hide_banner -encoders",
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                }
-            };
-            encoderProcess.Start();
-            var encoders = await encoderProcess.StandardOutput.ReadToEndAsync();
-            await encoderProcess.WaitForExitAsync();
-            graphicsDebugLines.Add("FFmpeg HEVC encoders:");
-            graphicsDebugLines.Add($"  NVIDIA NVENC: {GetCapabilityStatus(encoders, "hevc_nvenc")}");
-            graphicsDebugLines.Add($"  AMD AMF: {GetCapabilityStatus(encoders, "hevc_amf")}");
-            graphicsDebugLines.Add($"  Intel QSV: {GetCapabilityStatus(encoders, "hevc_qsv")}");
-            graphicsDebugLines.Add($"  Software x265: {GetCapabilityStatus(encoders, "libx265")}");
-            graphicsDebugLines.Add($"  Query exit code: {encoderProcess.ExitCode}");
-            encoderProcess.Dispose();
-
-            lastSelectedGpu = SelectedGpu;
+            var selectedGpu = SelectedGpu ?? lastSelectedGpu;
             viewModel.Gpus = new ObservableCollection<GpuInfo>(gpuList);
-            viewModel.GraphicsDebugInfo = string.Join(Environment.NewLine, graphicsDebugLines);
-            if(SelectedGpu != lastSelectedGpu) SelectedGpu = lastSelectedGpu;
-            else if(SelectedGpu != null) OnSelectedGPUChanged(this);
-
-            static string GetCapabilityStatus(string capabilities, string capability)
+            if (selectedGpu != null)
             {
-                return capabilities.Contains(capability, StringComparison.OrdinalIgnoreCase) ? "Supported" : "Not supported";
+                lastSelectedGpu = gpuList.First(g => g.Vendor == selectedGpu.Vendor && g.Index == selectedGpu.Index);
+                if (SelectedGpu != null) SelectedGpu = lastSelectedGpu;
             }
 
             static GpuVendor GetGpuVendor(string adapterCompatibility)
@@ -153,8 +110,10 @@ namespace WinUIShared.Controls
 
         private static void OnSelectedGPUChanged(HardwareSelector selector)
         {
+            var settings = Windows.Storage.ApplicationData.Current.RoamingSettings.Values;
             if (selector.SelectedGpu == null)
             {
+                settings[HardwareAccelerationEnabledSetting] = false;
                 selector.UseHardwareAccel.IsChecked = false;
                 return;
             }
@@ -164,13 +123,18 @@ namespace WinUIShared.Controls
             {
                 if (!gpuList.Contains(selector.SelectedGpu))
                 {
-                    selector.SelectedGpu = gpuList.First(g => g.Index == selector.SelectedGpu.Index);
+                    selector.SelectedGpu = gpuList.First(g =>
+                        g.Vendor == selector.SelectedGpu.Vendor && g.Index == selector.SelectedGpu.Index);
                 }
                 else
                 {
-                    if(selector.UseHardwareAccel.IsChecked != true)
+                    if (selector.UseHardwareAccel.IsChecked != true)
                         selector.UseHardwareAccel.IsChecked = true;
                     selector.lastSelectedGpu = selector.SelectedGpu;
+                    settings[HardwareAccelerationEnabledSetting] = true;
+                    settings[HardwareAccelerationGpuNameSetting] = selector.SelectedGpu.Name;
+                    settings[HardwareAccelerationGpuIndexSetting] = selector.SelectedGpu.Index;
+                    settings[HardwareAccelerationGpuVendorSetting] = (int)selector.SelectedGpu.Vendor;
                 }
             }
             else selector.SelectedGpu = null;
@@ -191,17 +155,11 @@ namespace WinUIShared.Controls
 
     internal class ViewModel: INotifyPropertyChanged
     {
-        private ObservableCollection<GpuInfo> _gpus;
-        private string _graphicsDebugInfo = "Checking graphics capabilities…";
+        private ObservableCollection<GpuInfo> _gpus = [];
         public ObservableCollection<GpuInfo> Gpus
         {
             get => _gpus;
             set => SetProperty(ref _gpus, value);
-        }
-        public string GraphicsDebugInfo
-        {
-            get => _graphicsDebugInfo;
-            set => SetProperty(ref _graphicsDebugInfo, value);
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
