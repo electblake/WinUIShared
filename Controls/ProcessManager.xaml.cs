@@ -21,8 +21,8 @@ namespace WinUIShared.Controls
             get => (OperationState)GetValue(StateProperty);
             set { if (State != value) SetValue(StateProperty, value); }
         }
-        public event EventHandler<OperationState> StateChanged;
-        public event RoutedEventHandler DoneRequested;
+        public event EventHandler<OperationState>? StateChanged;
+        public event RoutedEventHandler? DoneRequested;
 
         public static readonly DependencyProperty ProcessorProperty = DependencyProperty.Register(
             nameof(Processor),
@@ -61,7 +61,8 @@ namespace WinUIShared.Controls
         }
 
         private bool processFailed;
-        private string processFailedMessage;
+        // Assigned by the error reporter together with processFailed.
+        private string processFailedMessage = null!;
 
         public ProcessManager()
         {

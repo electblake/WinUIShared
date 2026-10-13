@@ -6,7 +6,7 @@ using System.Text;
 
 namespace WinUIShared.Helpers
 {
-    public class EnumToVisibilityConverter<T> : IValueConverter //Can't be used because of XAML limitations
+    public class EnumToVisibilityConverter<T> : IValueConverter where T : struct, Enum //Can't be used because of XAML limitations
     {
         public T Enum { get; set; }
 
@@ -22,10 +22,11 @@ namespace WinUIShared.Helpers
         }
     }
 
+    // Required converter properties are supplied by XAML before Convert is called.
     public class EnumToVisibilityConverter : IValueConverter
     {
-        public Type EnumType { get; set; }
-        public string EnumForVisibility { get; set; }
+        public Type EnumType { get; set; } = null!;
+        public string EnumForVisibility { get; set; } = null!;
 
         public object Convert(object value, Type targetType, object parameter, string language)
         {
@@ -77,9 +78,9 @@ namespace WinUIShared.Helpers
 
     public class StringEqualityConverter : IValueConverter
     {
-        public string CompareTo { get; set; }
-        public object Equal { get; set; }
-        public object NotEqual { get; set; }
+        public string CompareTo { get; set; } = null!;
+        public object Equal { get; set; } = null!;
+        public object NotEqual { get; set; } = null!;
 
         public object Convert(object value, Type targetType, object parameter, string language)
         {

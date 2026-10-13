@@ -39,13 +39,13 @@ namespace WinUIShared.Controls
             if (settings.ContainsKey(HardwareAccelerationGpuNameSetting))
             {
                 var gpu = new GpuInfo(
-                    (string)settings[HardwareAccelerationGpuNameSetting],
-                    (int)settings[HardwareAccelerationGpuIndexSetting],
-                    (GpuVendor)(int)settings[HardwareAccelerationGpuVendorSetting]);
+                    settings.Get<string>(HardwareAccelerationGpuNameSetting),
+                    settings.Get<int>(HardwareAccelerationGpuIndexSetting),
+                    (GpuVendor)settings.Get<int>(HardwareAccelerationGpuVendorSetting));
                 viewModel.Gpus = new ObservableCollection<GpuInfo>([gpu]);
                 lastSelectedGpu = gpu;
                 if (settings.ContainsKey(HardwareAccelerationEnabledSetting) &&
-                    (bool)settings[HardwareAccelerationEnabledSetting]) SelectedGpu = gpu;
+                    settings.Get<bool>(HardwareAccelerationEnabledSetting)) SelectedGpu = gpu;
             }
         }
 

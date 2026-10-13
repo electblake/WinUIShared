@@ -14,5 +14,7 @@ namespace WinUIShared.Helpers
             => execute((T?)parameter);
 
         public event EventHandler? CanExecuteChanged;
+
+        public void NotifyCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
     }
 }

@@ -13,7 +13,7 @@ namespace WinUIShared.Helpers
             for (var i = 0; i < VisualTreeHelper.GetChildrenCount(tree); i++)
             {
                 var child = VisualTreeHelper.GetChild(tree, i);
-                if (child != null && ((FrameworkElement)child).Name == sName)
+                if (((FrameworkElement)child).Name == sName)
                     return child;
                 var childInSubtree = FindChildElementByName(child, sName);
                 if (childInSubtree != null)

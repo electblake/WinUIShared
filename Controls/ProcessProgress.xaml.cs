@@ -37,7 +37,7 @@ namespace WinUIShared.Controls
             get => (OperationState)GetValue(StateProperty);
             set => SetValue(StateProperty, value);
         }
-        public event EventHandler<OperationState> StateChanged;
+        public event EventHandler<OperationState>? StateChanged;
         private bool BeforeOperation => State == OperationState.BeforeOperation;
         private bool DuringOperation => State == OperationState.DuringOperation;
         private bool AfterOperation => State == OperationState.AfterOperation;
@@ -161,12 +161,12 @@ namespace WinUIShared.Controls
 
         #endregion
 
-        public event EventHandler ViewRequested;
-        public event EventHandler PauseRequested;
-        public event EventHandler ResumeRequested;
-        public event EventHandler CancelRequested;
-        public event EventHandler CloseRequested;
-        public event RoutedEventHandler DoneRequested;
+        public event EventHandler? ViewRequested;
+        public event EventHandler? PauseRequested;
+        public event EventHandler? ResumeRequested;
+        public event EventHandler? CancelRequested;
+        public event EventHandler? CloseRequested;
+        public event RoutedEventHandler? DoneRequested;
 
         public ProcessProgress()
         {
@@ -221,15 +221,7 @@ namespace WinUIShared.Controls
 
         private void CancelProcess(object sender, RoutedEventArgs e)
         {
-            var button = (Button)sender;
-            var container = button.Parent;
-            while (container != null && container is not FlyoutPresenter)
-            {
-                container = VisualTreeHelper.GetParent(container);
-            }
-            var flyoutPresenter = (FlyoutPresenter)container;
-            var popup = flyoutPresenter.Parent as Popup;
-            popup.IsOpen = false;
+            FlyoutBase.GetAttachedFlyout(OnlyPrimary ? PrimaryOnlyCancelClose : CancelClose).Hide();
 
             State = OperationState.BeforeOperation;
             CancelRequested?.Invoke(this, EventArgs.Empty);
