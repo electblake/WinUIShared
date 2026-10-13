@@ -22,6 +22,7 @@ namespace WinUIShared.Controls
             set { if (State != value) SetValue(StateProperty, value); }
         }
         public event EventHandler<OperationState> StateChanged;
+        public event RoutedEventHandler DoneRequested;
 
         public static readonly DependencyProperty ProcessorProperty = DependencyProperty.Register(
             nameof(Processor),
@@ -102,9 +103,11 @@ namespace WinUIShared.Controls
 
             selector.RegisterPropertyChangedCallback(HardwareSelector.SelectedGpuProperty, (sender, dp) =>
             {
-                if(selector.SelectedGpu != null) manager.Processor.EnableHardwareAccelParams(selector.SelectedGpu);
+                if (selector.SelectedGpu != null) manager.Processor.EnableHardwareAccelParams(selector.SelectedGpu);
                 else manager.Processor.DisableHardwareAccel();
             });
+            if (selector.SelectedGpu != null) manager.Processor.EnableHardwareAccelParams(selector.SelectedGpu);
+            else manager.Processor.DisableHardwareAccel();
         }
 
         private void ProcessProgress_OnPauseRequested(object? sender, EventArgs e)
@@ -128,33 +131,31 @@ namespace WinUIShared.Controls
             State = OperationState.BeforeOperation;
         }
 
+        private void ProcessProgress_OnDoneRequested(object sender, RoutedEventArgs e)
+        {
+            DoneRequested?.Invoke(this, e);
+        }
+
         public async Task<string?> StartProcess(Task processTask)
         {
             SetupProcess();
 
-            try
-            {
-                await processTask;
+            await processTask;
 
-                if (State == OperationState.BeforeOperation) return null; //Canceled
-                if (processFailed)
-                {
-                    State = OperationState.BeforeOperation;
-                    await ErrorAction(processFailedMessage);
-                    await Processor.Cancel();
-                    return null;
-                }
-
-                State = OperationState.AfterOperation;
-                ProcessProgress.RightTextPrimary = "Done";
-                return Processor.GetFile();
-            }
-            catch (Exception ex)
+            if (State == OperationState.BeforeOperation) return null; //Canceled
+            if (processFailed)
             {
-                await ErrorAction(ex.Message);
                 State = OperationState.BeforeOperation;
+                VideoCropper.App.Diagnostics.Report("FFmpeg operation failed", processFailedMessage);
+                await ErrorAction(processFailedMessage);
+                await Processor.Cancel();
                 return null;
             }
+
+            State = OperationState.AfterOperation;
+            ProcessProgress.RightTextPrimary = "Done";
+            VideoCropper.App.Diagnostics.Log("Crop operation completed", Processor.GetFile());
+            return Processor.GetFile();
 
             async Task ErrorAction(string message)
             {

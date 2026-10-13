@@ -7,11 +7,16 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 
 namespace WinUIShared.Controls
 {
     public sealed partial class HardwareSelector : UserControl
     {
+        private const string HardwareAccelerationEnabledSetting = "HardwareAcceleration.Enabled";
+        private const string HardwareAccelerationGpuNameSetting = "HardwareAcceleration.GpuName";
+        private const string HardwareAccelerationGpuIndexSetting = "HardwareAcceleration.GpuIndex";
+        private const string HardwareAccelerationGpuVendorSetting = "HardwareAcceleration.GpuVendor";
         private ViewModel viewModel = new();
         private GpuInfo? lastSelectedGpu;
 
@@ -30,10 +35,28 @@ namespace WinUIShared.Controls
         public HardwareSelector()
         {
             InitializeComponent();
+            var settings = VideoCropper.App.Settings;
+            if (settings.ContainsKey(HardwareAccelerationGpuNameSetting))
+            {
+                var gpu = new GpuInfo(
+                    (string)settings[HardwareAccelerationGpuNameSetting],
+                    (int)settings[HardwareAccelerationGpuIndexSetting],
+                    (GpuVendor)(int)settings[HardwareAccelerationGpuVendorSetting]);
+                viewModel.Gpus = new ObservableCollection<GpuInfo>([gpu]);
+                lastSelectedGpu = gpu;
+                if (settings.ContainsKey(HardwareAccelerationEnabledSetting) &&
+                    (bool)settings[HardwareAccelerationEnabledSetting]) SelectedGpu = gpu;
+            }
         }
 
         private async void HardwareSelector_OnLoaded(object sender, RoutedEventArgs e)
         {
+            await LoadGpus();
+        }
+
+        private async Task LoadGpus()
+        {
+            VideoCropper.App.Diagnostics.Log("GPU discovery started");
             var gpuList = new List<GpuInfo>();
             var nvidiaCount = 0;
             var intelCount = 0;
@@ -42,7 +65,7 @@ namespace WinUIShared.Controls
                 StartInfo = new ProcessStartInfo()
                 {
                     FileName = "powershell",
-                    Arguments = "-NoProfile -Command \"Get-CimInstance Win32_VideoController | ForEach-Object { \\\"$($_.Caption);$($_.DeviceID);$($_.AdapterCompatibility)\\\" }\"",
+                    Arguments = "-NoProfile -Command \"Get-CimInstance Win32_VideoController | ForEach-Object { \\\"$($_.Caption);$($_.DeviceID);$($_.AdapterCompatibility);$($_.DriverVersion);$($_.AdapterRAM);$($_.VideoModeDescription);$($_.Status)\\\" }\"",
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
                 },
@@ -51,9 +74,9 @@ namespace WinUIShared.Controls
             process.OutputDataReceived += (_, args) =>
             {
                 if (string.IsNullOrWhiteSpace(args.Data)) return;
-                Debug.WriteLine(args.Data);
+                VideoCropper.App.Diagnostics.Log("GPU discovery", args.Data);
                 var line = args.Data.Split(';');
-                if (line.Length != 3) return;
+                if (line.Length != 7) return;
                 if (!int.TryParse(line[1]["VideoController".Length..], out var deviceId)) return;
                 var vendor = GetGpuVendor(line[2]);
                 var index = vendor switch
@@ -67,11 +90,16 @@ namespace WinUIShared.Controls
             process.Start();
             process.BeginOutputReadLine();
             await process.WaitForExitAsync();
+            VideoCropper.App.Diagnostics.Log($"GPU discovery exitCode={process.ExitCode}; GPUs={gpuList.Count}");
             process.Dispose();
-            lastSelectedGpu = SelectedGpu;
+
+            var selectedGpu = SelectedGpu ?? lastSelectedGpu;
             viewModel.Gpus = new ObservableCollection<GpuInfo>(gpuList);
-            if(SelectedGpu != lastSelectedGpu) SelectedGpu = lastSelectedGpu;
-            else if(SelectedGpu != null) OnSelectedGPUChanged(this);
+            if (selectedGpu != null)
+            {
+                lastSelectedGpu = gpuList.First(g => g.Vendor == selectedGpu.Vendor && g.Index == selectedGpu.Index);
+                if (SelectedGpu != null) SelectedGpu = lastSelectedGpu;
+            }
 
             static GpuVendor GetGpuVendor(string adapterCompatibility)
             {
@@ -84,8 +112,10 @@ namespace WinUIShared.Controls
 
         private static void OnSelectedGPUChanged(HardwareSelector selector)
         {
+            var settings = VideoCropper.App.Settings;
             if (selector.SelectedGpu == null)
             {
+                settings[HardwareAccelerationEnabledSetting] = false;
                 selector.UseHardwareAccel.IsChecked = false;
                 return;
             }
@@ -95,13 +125,18 @@ namespace WinUIShared.Controls
             {
                 if (!gpuList.Contains(selector.SelectedGpu))
                 {
-                    selector.SelectedGpu = gpuList.First(g => g.Index == selector.SelectedGpu.Index);
+                    selector.SelectedGpu = gpuList.First(g =>
+                        g.Vendor == selector.SelectedGpu.Vendor && g.Index == selector.SelectedGpu.Index);
                 }
                 else
                 {
-                    if(selector.UseHardwareAccel.IsChecked != true)
+                    if (selector.UseHardwareAccel.IsChecked != true)
                         selector.UseHardwareAccel.IsChecked = true;
                     selector.lastSelectedGpu = selector.SelectedGpu;
+                    settings[HardwareAccelerationEnabledSetting] = true;
+                    settings[HardwareAccelerationGpuNameSetting] = selector.SelectedGpu.Name;
+                    settings[HardwareAccelerationGpuIndexSetting] = selector.SelectedGpu.Index;
+                    settings[HardwareAccelerationGpuVendorSetting] = (int)selector.SelectedGpu.Vendor;
                 }
             }
             else selector.SelectedGpu = null;
@@ -122,7 +157,7 @@ namespace WinUIShared.Controls
 
     internal class ViewModel: INotifyPropertyChanged
     {
-        private ObservableCollection<GpuInfo> _gpus;
+        private ObservableCollection<GpuInfo> _gpus = [];
         public ObservableCollection<GpuInfo> Gpus
         {
             get => _gpus;

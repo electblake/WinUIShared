@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -103,6 +104,7 @@ namespace WinUIShared.Helpers
 
         public virtual async Task Cancel()
         {
+            logger.Log("Cancel requested");
             if (currentProcess == null) return;
             currentProcess.Kill();
             await currentProcess.WaitForExitAsync();
@@ -113,12 +115,14 @@ namespace WinUIShared.Helpers
 
         public void Pause()
         {
+            logger.Log("Pause requested");
             if (currentProcess == null || currentProcess.HasExited) return;
             SuspendProcess(currentProcess);
         }
 
         public void Resume()
         {
+            logger.Log("Resume requested");
             if (currentProcess == null || currentProcess.HasExited) return;
             ResumeProcess(currentProcess);
         }
@@ -163,7 +167,7 @@ namespace WinUIShared.Helpers
         public delegate Task IntermediateProcessHandler(Process process);
         protected async Task<bool> StartProcess(string processFileName, string arguments, DataReceivedEventHandler? outputEventHandler, DataReceivedEventHandler? errorEventHandler, IntermediateProcessHandler? intermediateHandler = null)
         {
-            logger.Log(arguments);
+            logger.Log($"Process starting: {processFileName} {arguments}");
             Process process = new()
             {
                 StartInfo = new ProcessStartInfo()
@@ -180,6 +184,8 @@ namespace WinUIShared.Helpers
                 },
                 EnableRaisingEvents = true
             };
+            process.OutputDataReceived += (_, args) => { if (args.Data != null) logger.Log("stdout", args.Data); };
+            process.ErrorDataReceived += (_, args) => { if (args.Data != null) logger.Log("stderr", args.Data); };
             process.OutputDataReceived += outputEventHandler;
             process.ErrorDataReceived += errorEventHandler;
             process.Start();
@@ -190,6 +196,7 @@ namespace WinUIShared.Helpers
             if(intermediateHandler != null) await intermediateHandler(process);
             process.StandardInput.Close();
             await process.WaitForExitAsync();
+            logger.Log($"Process exited: PID={process.Id}; exitCode={process.ExitCode}; canceled={hasBeenKilled}");
             var success = process.ExitCode == 0;
             process.Dispose();
             currentProcess = null;
@@ -208,7 +215,8 @@ namespace WinUIShared.Helpers
 
         public void EnableHardwareDecoding(bool enable) => disableHardwareDecoding = !enable;
 
-        public delegate void ProgressEventHandler(double progressPercent, TimeSpan currentTime, TimeSpan duration, int currentFrame);
+        public delegate void ProgressEventHandler(double progressPercent, TimeSpan currentTime, TimeSpan duration, int currentFrame,
+            double currentFps, double currentSpeed);
         public delegate void LineWatchHandler(string line);
         private DataReceivedEventHandler ProgressToDataReceivedEventHandler(ProgressEventHandler progressHandler, LineWatchHandler? lineWatcher)
         {
@@ -217,7 +225,6 @@ namespace WinUIShared.Helpers
             {
                 if (string.IsNullOrWhiteSpace(args.Data) || hasBeenKilled) return;
                 Debug.WriteLine(args.Data);
-                logger.Log(args.Data);
                 lineWatcher?.Invoke(args.Data);
                 if (CheckFailureStrings(args.Data)) return;
                 if (duration == TimeSpan.MinValue)
@@ -228,12 +235,14 @@ namespace WinUIShared.Helpers
                 if (!args.Data.StartsWith("frame")) return;
                 if (!CheckNoSpaceDuringProcess(args.Data))
                 {
-                    var matchCollection =
-                        Regex.Matches(args.Data, @"^frame=\s*(\d+)\s.+?time=(\d{2}:\d{2}:\d{2}\.\d{2}).+");
+                    var matchCollection = Regex.Matches(args.Data,
+                        @"^frame=\s*(?<frame>\d+)\s+fps=\s*(?<fps>[\d.]+).+?time=(?<time>\d{2}:\d{2}:\d{2}\.\d{2}).+?speed=\s*(?<speed>(?:[1-9]\d*(?:\.\d+)?|0\.\d*[1-9]\d*))x");
                     if (matchCollection.Count == 0) return;
-                    var currentTime = TimeSpan.Parse(matchCollection[0].Groups[2].Value);
+                    var currentTime = TimeSpan.Parse(matchCollection[0].Groups["time"].Value);
+                    var currentFps = double.Parse(matchCollection[0].Groups["fps"].Value, CultureInfo.InvariantCulture);
+                    var speed = double.Parse(matchCollection[0].Groups["speed"].Value, CultureInfo.InvariantCulture);
                     progressHandler.Invoke(currentTime / duration * ProgressMax, currentTime, duration,
-                        int.Parse(matchCollection[0].Groups[1].Value));
+                        int.Parse(matchCollection[0].Groups["frame"].Value), currentFps, speed);
                 }
             };
         }
@@ -245,7 +254,9 @@ namespace WinUIShared.Helpers
 
         protected Task<bool> StartFfmpegProcess(string arguments, DataReceivedEventHandler? errorEventHandler, IntermediateProcessHandler? intermediateHandler = null)
         {
-            return StartProcess(ffmpegPath, $"-y {arguments}", null, errorEventHandler, intermediateHandler);
+            var ffmpegArguments = $"-y {arguments}";
+            leftTextPrimary.Report($"{ffmpegPath} {ffmpegArguments}");
+            return StartProcess(ffmpegPath, ffmpegArguments, null, errorEventHandler, intermediateHandler);
         }
 
         protected Task<bool> StartFfmpegProcess(string arguments, ProgressEventHandler progressHandler, LineWatchHandler? lineWatcher = null, IntermediateProcessHandler? intermediateHandler = null)
