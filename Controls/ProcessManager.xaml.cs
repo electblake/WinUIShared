@@ -82,7 +82,9 @@ namespace WinUIShared.Controls
             manager.Processor.SetProgressAndErrorReporters(
                 new Progress<string>(s => manager.ProcessProgress.LeftTextPrimary = s),
                 new Progress<string>(s => manager.ProcessProgress.CenterTextPrimary = s),
-                new Progress<string>(s => manager.ProcessProgress.RightTextPrimary = s),
+                new Progress<string>(s => manager.ProcessProgress.RightTextPrimary = manager.Processor.StopRequested
+                    ? manager.State == OperationState.AfterOperation ? "Stopped — output saved" : "Stopping — saving output…"
+                    : s),
                 new Progress<double>(d => manager.ProcessProgress.ProgressPrimary = d),
                 new Progress<string>(s => manager.ProcessProgress.LeftTextSecondary = s),
                 new Progress<string>(s => manager.ProcessProgress.CenterTextSecondary = s),
@@ -126,6 +128,12 @@ namespace WinUIShared.Controls
             Processor.ViewFile();
         }
 
+        private void ProcessProgress_OnStopRequested(object? sender, EventArgs e)
+        {
+            ProcessProgress.RightTextPrimary = "Stopping — saving output…";
+            Processor.Stop();
+        }
+
         private async void ProcessProgress_OnCancelRequested(object? sender, EventArgs e)
         {
             await Processor.Cancel();
@@ -154,8 +162,8 @@ namespace WinUIShared.Controls
             }
 
             State = OperationState.AfterOperation;
-            ProcessProgress.RightTextPrimary = "Done";
-            VideoCropper.App.Diagnostics.Log("Crop operation completed", Processor.GetFile());
+            ProcessProgress.RightTextPrimary = Processor.StopRequested ? "Stopped — output saved" : "Done";
+            VideoCropper.App.Diagnostics.Log(Processor.StopRequested ? "Crop stopped; output saved" : "Crop operation completed", Processor.GetFile());
             return Processor.GetFile();
 
             async Task ErrorAction(string message)

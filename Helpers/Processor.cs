@@ -17,6 +17,8 @@ namespace WinUIShared.Helpers
     {
         protected Process? currentProcess;
         protected bool hasBeenKilled;
+        public bool StopRequested { get; protected set; }
+        protected bool gracefulStopEnabled;
         protected const double ProgressMax = 100d;
         protected string? outputFile;
         protected static readonly IProgress<string> defaultProgressTextReporter = new Progress<string>(s => { });
@@ -120,6 +122,17 @@ namespace WinUIShared.Helpers
             SuspendProcess(currentProcess);
         }
 
+        public void Stop()
+        {
+            logger.Log("Stop requested: finalize and keep output");
+            StopRequested = true;
+            if (currentProcess == null || currentProcess.HasExited) return;
+            ResumeProcess(currentProcess);
+            if (!gracefulStopEnabled) return;
+            currentProcess.StandardInput.Write('q');
+            currentProcess.StandardInput.Flush();
+        }
+
         public void Resume()
         {
             logger.Log("Resume requested");
@@ -193,8 +206,10 @@ namespace WinUIShared.Helpers
             process.BeginOutputReadLine();
             hasBeenKilled = false;
             currentProcess = process;
-            if(intermediateHandler != null) await intermediateHandler(process);
-            process.StandardInput.Close();
+            if (intermediateHandler != null) await intermediateHandler(process);
+            // Interactive encoders keep stdin open for FFmpeg's graceful quit command.
+            if (!gracefulStopEnabled || intermediateHandler != null) process.StandardInput.Close();
+            if (gracefulStopEnabled && StopRequested) Stop();
             await process.WaitForExitAsync();
             logger.Log($"Process exited: PID={process.Id}; exitCode={process.ExitCode}; canceled={hasBeenKilled}");
             var success = process.ExitCode == 0;

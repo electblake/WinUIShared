@@ -165,6 +165,7 @@ namespace WinUIShared.Controls
         public event EventHandler? PauseRequested;
         public event EventHandler? ResumeRequested;
         public event EventHandler? CancelRequested;
+        public event EventHandler? StopRequested;
         public event EventHandler? CloseRequested;
         public event RoutedEventHandler? DoneRequested;
 
@@ -176,6 +177,16 @@ namespace WinUIShared.Controls
         private static void OnStateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var pp = (ProcessProgress)d;
+            pp.PauseView.IsEnabled = true;
+            pp.PrimaryOnlyPauseView.IsEnabled = true;
+            pp.CancelClose.IsEnabled = true;
+            pp.PrimaryOnlyCancelClose.IsEnabled = true;
+            pp.Paused = false;
+            if (pp.State != OperationState.DuringOperation)
+            {
+                FlyoutBase.GetAttachedFlyout(pp.CancelClose).Hide();
+                FlyoutBase.GetAttachedFlyout(pp.PrimaryOnlyCancelClose).Hide();
+            }
             pp.OnPropertyChanged(nameof(BeforeOperation));
             pp.OnPropertyChanged(nameof(DuringOperation));
             pp.OnPropertyChanged(nameof(AfterOperation));
@@ -261,6 +272,17 @@ namespace WinUIShared.Controls
             State = OperationState.BeforeOperation;
             CancelRequested?.Invoke(this, EventArgs.Empty);
             Paused = false;
+        }
+
+        private void StopProcess(object sender, RoutedEventArgs e)
+        {
+            FlyoutBase.GetAttachedFlyout(OnlyPrimary ? PrimaryOnlyCancelClose : CancelClose).Hide();
+            PauseView.IsEnabled = false;
+            PrimaryOnlyPauseView.IsEnabled = false;
+            CancelClose.IsEnabled = false;
+            PrimaryOnlyCancelClose.IsEnabled = false;
+            Paused = false;
+            StopRequested?.Invoke(this, EventArgs.Empty);
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

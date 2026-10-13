@@ -13,6 +13,7 @@
                                   PauseRequested="ProcessProgress_OnPauseRequested" ResumeRequested="ProcessProgress_OnResumeRequested"
                                   ViewRequested="ProcessProgress_OnViewRequested" CancelRequested="ProcessProgress_OnCancelRequested"
                                   DoneRequested="ProcessProgress_OnDoneRequested"
+                                  StopRequested="ProcessProgress_OnStopRequested"
                                   OnlyPrimary="{x:Bind OnlyPrimary, Mode=OneWay}"/>
         <ContentDialog Name="ErrorDialog" IsPrimaryButtonEnabled="True" PrimaryButtonText="Ok"/>
     </Grid>
