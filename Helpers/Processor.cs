@@ -104,6 +104,7 @@ namespace WinUIShared.Helpers
 
         public virtual async Task Cancel()
         {
+            logger.Log("Cancel requested");
             if (currentProcess == null) return;
             currentProcess.Kill();
             await currentProcess.WaitForExitAsync();
@@ -114,12 +115,14 @@ namespace WinUIShared.Helpers
 
         public void Pause()
         {
+            logger.Log("Pause requested");
             if (currentProcess == null || currentProcess.HasExited) return;
             SuspendProcess(currentProcess);
         }
 
         public void Resume()
         {
+            logger.Log("Resume requested");
             if (currentProcess == null || currentProcess.HasExited) return;
             ResumeProcess(currentProcess);
         }
@@ -164,7 +167,7 @@ namespace WinUIShared.Helpers
         public delegate Task IntermediateProcessHandler(Process process);
         protected async Task<bool> StartProcess(string processFileName, string arguments, DataReceivedEventHandler? outputEventHandler, DataReceivedEventHandler? errorEventHandler, IntermediateProcessHandler? intermediateHandler = null)
         {
-            logger.Log(arguments);
+            logger.Log($"Process starting: {processFileName} {arguments}");
             Process process = new()
             {
                 StartInfo = new ProcessStartInfo()
@@ -181,6 +184,8 @@ namespace WinUIShared.Helpers
                 },
                 EnableRaisingEvents = true
             };
+            process.OutputDataReceived += (_, args) => { if (args.Data != null) logger.Log("stdout", args.Data); };
+            process.ErrorDataReceived += (_, args) => { if (args.Data != null) logger.Log("stderr", args.Data); };
             process.OutputDataReceived += outputEventHandler;
             process.ErrorDataReceived += errorEventHandler;
             process.Start();
@@ -191,6 +196,7 @@ namespace WinUIShared.Helpers
             if(intermediateHandler != null) await intermediateHandler(process);
             process.StandardInput.Close();
             await process.WaitForExitAsync();
+            logger.Log($"Process exited: PID={process.Id}; exitCode={process.ExitCode}; canceled={hasBeenKilled}");
             var success = process.ExitCode == 0;
             process.Dispose();
             currentProcess = null;
@@ -219,7 +225,6 @@ namespace WinUIShared.Helpers
             {
                 if (string.IsNullOrWhiteSpace(args.Data) || hasBeenKilled) return;
                 Debug.WriteLine(args.Data);
-                logger.Log(args.Data);
                 lineWatcher?.Invoke(args.Data);
                 if (CheckFailureStrings(args.Data)) return;
                 if (duration == TimeSpan.MinValue)

@@ -140,29 +140,22 @@ namespace WinUIShared.Controls
         {
             SetupProcess();
 
-            try
-            {
-                await processTask;
+            await processTask;
 
-                if (State == OperationState.BeforeOperation) return null; //Canceled
-                if (processFailed)
-                {
-                    State = OperationState.BeforeOperation;
-                    await ErrorAction(processFailedMessage);
-                    await Processor.Cancel();
-                    return null;
-                }
-
-                State = OperationState.AfterOperation;
-                ProcessProgress.RightTextPrimary = "Done";
-                return Processor.GetFile();
-            }
-            catch (Exception ex)
+            if (State == OperationState.BeforeOperation) return null; //Canceled
+            if (processFailed)
             {
-                await ErrorAction(ex.Message);
                 State = OperationState.BeforeOperation;
+                VideoCropper.App.Diagnostics.Report("FFmpeg operation failed", processFailedMessage);
+                await ErrorAction(processFailedMessage);
+                await Processor.Cancel();
                 return null;
             }
+
+            State = OperationState.AfterOperation;
+            ProcessProgress.RightTextPrimary = "Done";
+            VideoCropper.App.Diagnostics.Log("Crop operation completed", Processor.GetFile());
+            return Processor.GetFile();
 
             async Task ErrorAction(string message)
             {

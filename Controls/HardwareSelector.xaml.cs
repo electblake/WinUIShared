@@ -35,7 +35,7 @@ namespace WinUIShared.Controls
         public HardwareSelector()
         {
             InitializeComponent();
-            var settings = Windows.Storage.ApplicationData.Current.RoamingSettings.Values;
+            var settings = VideoCropper.App.Settings;
             if (settings.ContainsKey(HardwareAccelerationGpuNameSetting))
             {
                 var gpu = new GpuInfo(
@@ -56,6 +56,7 @@ namespace WinUIShared.Controls
 
         private async Task LoadGpus()
         {
+            VideoCropper.App.Diagnostics.Log("GPU discovery started");
             var gpuList = new List<GpuInfo>();
             var nvidiaCount = 0;
             var intelCount = 0;
@@ -73,7 +74,7 @@ namespace WinUIShared.Controls
             process.OutputDataReceived += (_, args) =>
             {
                 if (string.IsNullOrWhiteSpace(args.Data)) return;
-                Debug.WriteLine(args.Data);
+                VideoCropper.App.Diagnostics.Log("GPU discovery", args.Data);
                 var line = args.Data.Split(';');
                 if (line.Length != 7) return;
                 if (!int.TryParse(line[1]["VideoController".Length..], out var deviceId)) return;
@@ -89,6 +90,7 @@ namespace WinUIShared.Controls
             process.Start();
             process.BeginOutputReadLine();
             await process.WaitForExitAsync();
+            VideoCropper.App.Diagnostics.Log($"GPU discovery exitCode={process.ExitCode}; GPUs={gpuList.Count}");
             process.Dispose();
 
             var selectedGpu = SelectedGpu ?? lastSelectedGpu;
@@ -110,7 +112,7 @@ namespace WinUIShared.Controls
 
         private static void OnSelectedGPUChanged(HardwareSelector selector)
         {
-            var settings = Windows.Storage.ApplicationData.Current.RoamingSettings.Values;
+            var settings = VideoCropper.App.Settings;
             if (selector.SelectedGpu == null)
             {
                 settings[HardwareAccelerationEnabledSetting] = false;
