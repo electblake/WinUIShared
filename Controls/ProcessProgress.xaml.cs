@@ -214,6 +214,41 @@ namespace WinUIShared.Controls
             FlyoutBase.ShowAttachedFlyout((FrameworkElement)sender);
         }
 
+        private async void ShowCommand_Click(object sender, RoutedEventArgs e)
+        {
+            var command = LeftTextPrimary;
+            var commandText = new TextBox
+            {
+                Text = command,
+                IsReadOnly = true,
+                AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap,
+                FontFamily = new FontFamily("Consolas"),
+                MinHeight = 160,
+                MaxHeight = 360
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(commandText, "Full command");
+            ScrollViewer.SetVerticalScrollBarVisibility(commandText, ScrollBarVisibility.Auto);
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "Executed command",
+                Content = commandText,
+                PrimaryButtonText = "Copy command",
+                CloseButtonText = "Close",
+                DefaultButton = ContentDialogButton.Primary
+            };
+            dialog.PrimaryButtonClick += (_, args) =>
+            {
+                var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                data.SetText(command);
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+                dialog.PrimaryButtonText = "Copied!";
+                args.Cancel = true;
+            };
+            await dialog.ShowAsync();
+        }
+
         private void Done_OnClick(object sender, RoutedEventArgs e)
         {
             DoneRequested?.Invoke(this, e);

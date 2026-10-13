@@ -81,12 +81,15 @@
                     </StackPanel>
                 </Grid>
             </Button>
-            <TextBlock RelativePanel.Below="ProgressBar" RelativePanel.RightOf="PrimaryOnlyPauseView"
+            <HyperlinkButton RelativePanel.Below="ProgressBar" RelativePanel.RightOf="PrimaryOnlyPauseView"
                        RelativePanel.LeftOf="PrimaryOnlyDone" RelativePanel.AlignVerticalCenterWith="PrimaryOnlyPauseView"
-                       Margin="10,0" Text="{x:Bind LeftTextPrimary, Mode=OneWay}" FontFamily="Consolas"
-                       Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True"
-                       ToolTipService.ToolTip="{x:Bind LeftTextPrimary, Mode=OneWay}"/>
+                       Margin="10,0" Padding="4" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                       Click="ShowCommand_Click" AutomationProperties.Name="View full command"
+                       ToolTipService.ToolTip="View and copy the full command">
+                <TextBlock Text="{x:Bind LeftTextPrimary, Mode=OneWay}" FontFamily="Consolas"
+                           Style="{StaticResource CaptionTextBlockStyle}" TextDecorations="Underline"
+                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+            </HyperlinkButton>
             <Button Name="PrimaryOnlyDone" RelativePanel.Below="ProgressBar" RelativePanel.LeftOf="PrimaryOnlyCancelClose"
                     RelativePanel.AlignVerticalCenterWith="PrimaryOnlyCancelClose" Margin="0,0,10,0" Width="120"
                     Visibility="{x:Bind AfterOperation, Mode=OneWay}" Click="Done_OnClick">
