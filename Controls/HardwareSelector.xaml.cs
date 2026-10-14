@@ -257,7 +257,7 @@ namespace WinUIShared.Controls
             {
                 GpuVendor.Nvidia => $"-hwaccel cuda -hwaccel_output_format cuda -hwaccel_device {gpuInfo.Index} ",
                 GpuVendor.Amd => $"-hwaccel d3d11va -hwaccel_output_format d3d11 -hwaccel_device {gpuInfo.Index} ",
-                GpuVendor.Intel => $"-hwaccel qsv -hwaccel_output_format qsv -hwaccel_device {gpuInfo.Index} ",
+                GpuVendor.Intel => "-hwaccel qsv -hwaccel_output_format qsv -hwaccel_device intel ",
                 _ => string.Empty
             };
         }
@@ -268,7 +268,7 @@ namespace WinUIShared.Controls
             {
                 GpuVendor.Nvidia => $"-rc vbr -b:v 0 -cq {quality}",
                 GpuVendor.Amd => $"-rc cqp -qp {quality}",
-                GpuVendor.Intel => $"-rc icq -global_quality {quality}",
+                GpuVendor.Intel => $"-global_quality {quality}",
                 _ => $"-crf {quality}"
             };
         }
@@ -300,7 +300,7 @@ namespace WinUIShared.Controls
                 GpuVendor.Nvidia => $"hevc_nvenc -gpu {gpuInfo.Index}",
                 GpuVendor.Amd => "hevc_amf",
                 //GpuVendor.Amd => $"hevc_amf -device {gpuInfo.DeviceId}",
-                GpuVendor.Intel => $"hevc_qsv -qsv_device {gpuInfo.Index}",
+                GpuVendor.Intel => "hevc_qsv",
                 _ => "libx265"
             };
         }
