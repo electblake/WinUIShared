@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 
 namespace WinUIShared.Controls
 {
@@ -19,6 +20,9 @@ namespace WinUIShared.Controls
         private const string HardwareAccelerationGpuVendorSetting = "HardwareAcceleration.GpuVendor";
         private ViewModel viewModel = new();
         private GpuInfo? lastSelectedGpu;
+        private bool refreshingGpuList;
+        private Task? gpuDiscovery;
+        private static readonly GpuInfo AutoGpu = new("Auto", 0, GpuVendor.Auto);
 
         public static readonly DependencyProperty SelectedGpuProperty = DependencyProperty.Register(
             nameof(SelectedGpu),
@@ -35,6 +39,7 @@ namespace WinUIShared.Controls
         public HardwareSelector()
         {
             InitializeComponent();
+            viewModel.Gpus.Add(AutoGpu);
             var settings = VideoCropper.App.Settings;
             if (settings.ContainsKey(HardwareAccelerationGpuNameSetting))
             {
@@ -42,7 +47,7 @@ namespace WinUIShared.Controls
                     settings.Get<string>(HardwareAccelerationGpuNameSetting),
                     settings.Get<int>(HardwareAccelerationGpuIndexSetting),
                     (GpuVendor)settings.Get<int>(HardwareAccelerationGpuVendorSetting));
-                viewModel.Gpus = new ObservableCollection<GpuInfo>([gpu]);
+                viewModel.Gpus = new ObservableCollection<GpuInfo>(gpu.Vendor == GpuVendor.Auto ? [gpu] : [AutoGpu, gpu]);
                 lastSelectedGpu = gpu;
                 if (settings.ContainsKey(HardwareAccelerationEnabledSetting) &&
                     settings.Get<bool>(HardwareAccelerationEnabledSetting)) SelectedGpu = gpu;
@@ -51,13 +56,34 @@ namespace WinUIShared.Controls
 
         private async void HardwareSelector_OnLoaded(object sender, RoutedEventArgs e)
         {
-            await LoadGpus();
+            await (gpuDiscovery ??= LoadGpus());
+        }
+
+        public async Task<GpuInfo?> ResolveSelectedGpuAsync(string ffmpegPath)
+        {
+            if (SelectedGpu == null) return null;
+            await (gpuDiscovery ??= LoadGpus());
+            if (SelectedGpu!.Vendor != GpuVendor.Auto) return SelectedGpu;
+
+            using var process = Process.Start(new ProcessStartInfo(ffmpegPath, "-hide_banner -encoders")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true
+            })!;
+            var output = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            var encoders = Regex.Matches(output, @"(?m)^\s*V\S*\s+(\S+)")
+                .Select(match => match.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
+            var gpu = GpuInfo.SelectBest(viewModel.Gpus, encoders);
+            VideoCropper.App.Diagnostics.Log($"Auto hardware selected: {gpu.Name}");
+            return gpu;
         }
 
         private async Task LoadGpus()
         {
             VideoCropper.App.Diagnostics.Log("GPU discovery started");
-            var gpuList = new List<GpuInfo>();
+            var gpuList = new List<GpuInfo> { AutoGpu };
             var nvidiaCount = 0;
             var intelCount = 0;
             Process process = new()
@@ -94,12 +120,15 @@ namespace WinUIShared.Controls
             process.Dispose();
 
             var selectedGpu = SelectedGpu ?? lastSelectedGpu;
+            var hardwareEnabled = SelectedGpu != null;
+            refreshingGpuList = true;
             viewModel.Gpus = new ObservableCollection<GpuInfo>(gpuList);
             if (selectedGpu != null)
             {
                 lastSelectedGpu = gpuList.First(g => g.Vendor == selectedGpu.Vendor && g.Index == selectedGpu.Index);
-                if (SelectedGpu != null) SelectedGpu = lastSelectedGpu;
             }
+            refreshingGpuList = false;
+            if (hardwareEnabled) SelectedGpu = lastSelectedGpu;
 
             static GpuVendor GetGpuVendor(string adapterCompatibility)
             {
@@ -112,6 +141,7 @@ namespace WinUIShared.Controls
 
         private static void OnSelectedGPUChanged(HardwareSelector selector)
         {
+            if (selector.refreshingGpuList) return;
             var settings = VideoCropper.App.Settings;
             if (selector.SelectedGpu == null)
             {
@@ -185,11 +215,25 @@ namespace WinUIShared.Controls
         None,
         Nvidia,
         Amd,
-        Intel
+        Intel,
+        Auto
     }
 
     public class GpuInfo(string name, int index, GpuVendor vendor)
     {
+        public static GpuInfo SelectBest(IEnumerable<GpuInfo> gpus, IReadOnlySet<string> encoders) =>
+            gpus.Where(gpu => gpu.Vendor is GpuVendor.Nvidia or GpuVendor.Intel or GpuVendor.Amd)
+                .Where(gpu => encoders.Contains(EncodingParams(gpu).Split(' ')[0]))
+                .OrderBy(gpu => gpu.Vendor switch
+                {
+                    GpuVendor.Nvidia => 0,
+                    GpuVendor.Intel => 1,
+                    GpuVendor.Amd => 2,
+                    _ => 3
+                })
+                .ThenBy(gpu => gpu.Index)
+                .First();
+
         public string Name { get; set; } = name;
         public int Index { get; set; } = index;
         public GpuVendor Vendor { get; set; } = vendor;

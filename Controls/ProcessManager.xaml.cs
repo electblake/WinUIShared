@@ -40,7 +40,7 @@ namespace WinUIShared.Controls
             nameof(HardwareSelector),
             typeof(HardwareSelector),
             typeof(ProcessManager),
-            new PropertyMetadata(null, OnHardwareSelectorChanged));
+            new PropertyMetadata(null));
 
         public HardwareSelector HardwareSelector
         {
@@ -98,21 +98,6 @@ namespace WinUIShared.Controls
             );
         }
 
-        private static void OnHardwareSelectorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        {
-            var manager = (ProcessManager)d;
-            var selector = manager.HardwareSelector;
-            if (selector == null) return;
-
-            selector.RegisterPropertyChangedCallback(HardwareSelector.SelectedGpuProperty, (sender, dp) =>
-            {
-                if (selector.SelectedGpu != null) manager.Processor.EnableHardwareAccelParams(selector.SelectedGpu);
-                else manager.Processor.DisableHardwareAccel();
-            });
-            if (selector.SelectedGpu != null) manager.Processor.EnableHardwareAccelParams(selector.SelectedGpu);
-            else manager.Processor.DisableHardwareAccel();
-        }
-
         private void ProcessProgress_OnPauseRequested(object? sender, EventArgs e)
         {
             Processor.Pause();
@@ -145,11 +130,15 @@ namespace WinUIShared.Controls
             DoneRequested?.Invoke(this, e);
         }
 
-        public async Task<string?> StartProcess(Task processTask)
+        public async Task<string?> StartProcess(Func<Task> process)
         {
             SetupProcess();
 
-            await processTask;
+            var gpu = await HardwareSelector.ResolveSelectedGpuAsync(Processor.FfmpegPath);
+            if (gpu != null) Processor.EnableHardwareAccelParams(gpu);
+            else Processor.DisableHardwareAccel();
+
+            await process();
 
             if (State == OperationState.BeforeOperation) return null; //Canceled
             if (processFailed)

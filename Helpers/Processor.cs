@@ -15,6 +15,7 @@ namespace WinUIShared.Helpers
 {
     public class Processor(string ffmpegPath, IFileLogger logger)
     {
+        public string FfmpegPath => ffmpegPath;
         protected Process? currentProcess;
         protected bool hasBeenKilled;
         public bool StopRequested { get; protected set; }
