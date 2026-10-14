@@ -16,6 +16,15 @@ namespace WinUIShared.Helpers
     public class Processor(string ffmpegPath, IFileLogger logger)
     {
         public string FfmpegPath => ffmpegPath;
+        public bool MemoryExhausted { get; private set; }
+        public string LastFailureDetails { get; private set; } = string.Empty;
+
+        public static bool IsMemoryExhaustion(string message) =>
+            message.Contains("cannot allocate memory", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("out of memory", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("memory allocation fail", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("CUDA_ERROR_OUT_OF_MEMORY", StringComparison.OrdinalIgnoreCase) ||
+            (message.Contains("malloc", StringComparison.OrdinalIgnoreCase) && message.Contains("failed", StringComparison.OrdinalIgnoreCase));
         protected Process? currentProcess;
         protected bool hasBeenKilled;
         public bool StopRequested { get; protected set; }
@@ -181,6 +190,10 @@ namespace WinUIShared.Helpers
         public delegate Task IntermediateProcessHandler(Process process);
         protected async Task<bool> StartProcess(string processFileName, string arguments, DataReceivedEventHandler? outputEventHandler, DataReceivedEventHandler? errorEventHandler, IntermediateProcessHandler? intermediateHandler = null)
         {
+            MemoryExhausted = false;
+            LastFailureDetails = string.Empty;
+            var stderrTail = new Queue<string>();
+            string? memoryError = null;
             logger.Log($"Process starting: {processFileName} {arguments}");
             Process process = new()
             {
@@ -199,7 +212,15 @@ namespace WinUIShared.Helpers
                 EnableRaisingEvents = true
             };
             process.OutputDataReceived += (_, args) => { if (args.Data != null) logger.Log("stdout", args.Data); };
-            process.ErrorDataReceived += (_, args) => { if (args.Data != null) logger.Log("stderr", args.Data); };
+            process.ErrorDataReceived += (_, args) =>
+            {
+                if (args.Data == null) return;
+                var line = args.Data.Length > 2000 ? args.Data[..2000] : args.Data;
+                if (IsMemoryExhaustion(line)) memoryError = line;
+                if (stderrTail.Count == 24) stderrTail.Dequeue();
+                stderrTail.Enqueue(line);
+                logger.Log("stderr", args.Data);
+            };
             process.OutputDataReceived += outputEventHandler;
             process.ErrorDataReceived += errorEventHandler;
             process.Start();
@@ -214,6 +235,9 @@ namespace WinUIShared.Helpers
             await process.WaitForExitAsync();
             logger.Log($"Process exited: PID={process.Id}; exitCode={process.ExitCode}; canceled={hasBeenKilled}");
             var success = process.ExitCode == 0;
+            MemoryExhausted = !success && (memoryError != null || process.ExitCode == -12);
+            if (!success)
+                LastFailureDetails = $"Exit code: {process.ExitCode}\nHardware: {gpuInfo?.Name ?? "CPU"}\nCommand: {processFileName} {arguments}\n{memoryError}\n\nRecent FFmpeg output:\n{string.Join(Environment.NewLine, stderrTail)}";
             process.Dispose();
             currentProcess = null;
             return success;

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Data;
 using WinUIShared.Enums;
 using WinUIShared.Helpers;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace WinUIShared.Controls
 {
@@ -134,19 +135,29 @@ namespace WinUIShared.Controls
         {
             SetupProcess();
 
-            var gpu = await HardwareSelector.ResolveSelectedGpuAsync(Processor.FfmpegPath);
-            if (gpu != null) Processor.EnableHardwareAccelParams(gpu);
-            else Processor.DisableHardwareAccel();
-
-            await process();
+            var memoryFailure = false;
+            try
+            {
+                var gpu = await HardwareSelector.ResolveSelectedGpuAsync(Processor.FfmpegPath);
+                if (gpu != null) Processor.EnableHardwareAccelParams(gpu);
+                else Processor.DisableHardwareAccel();
+                await process();
+            }
+            catch (Exception exception) when (exception is OutOfMemoryException ||
+                exception is Win32Exception { NativeErrorCode: 8 or 14 or 1450 or 1455 })
+            {
+                await Processor.Cancel();
+                memoryFailure = true;
+                processFailed = true;
+                processFailedMessage = $"The crop stopped because Windows could not allocate enough memory. Free memory before clicking Crop again.\n\n{exception}";
+            }
 
             if (State == OperationState.BeforeOperation) return null; //Canceled
             if (processFailed)
             {
                 State = OperationState.BeforeOperation;
-                VideoCropper.App.Diagnostics.Report("FFmpeg operation failed", processFailedMessage);
-                await ErrorAction(processFailedMessage);
-                await Processor.Cancel();
+                var reportPath = VideoCropper.App.Diagnostics.Report("Crop operation failed", processFailedMessage);
+                await ErrorAction($"{processFailedMessage}\n\nDiagnostic report: {reportPath}", memoryFailure || Processor.MemoryExhausted);
                 return null;
             }
 
@@ -155,12 +166,25 @@ namespace WinUIShared.Controls
             VideoCropper.App.Diagnostics.Log(Processor.StopRequested ? "Crop stopped; output saved" : "Crop operation completed", Processor.GetFile());
             return Processor.GetFile();
 
-            async Task ErrorAction(string message)
+            async Task ErrorAction(string message, bool memoryExhausted)
             {
-                ErrorDialog.Title = "Operation failed";
-                ErrorDialog.Content = message;
+                processFailedMessage = message;
+                ErrorDialog.Title = memoryExhausted ? "Not enough memory to crop" : "Operation failed";
+                ErrorDialog.Content = new ScrollViewer
+                {
+                    MaxHeight = 400,
+                    Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true }
+                };
                 await ErrorDialog.ShowAsync();
             }
+        }
+
+        private void CopyErrorDetails(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+        {
+            var data = new DataPackage();
+            data.SetText(processFailedMessage);
+            Clipboard.SetContent(data);
+            args.Cancel = true;
         }
 
         private void SetupProcess()

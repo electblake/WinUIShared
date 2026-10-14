@@ -34,8 +34,8 @@
                             <TextBlock Text="Stop saves the video processed so far. Finishing buffered frames and saving may take a moment. Cancel deletes the partial output."
                                        TextWrapping="Wrap"/>
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="Stop and keep output" Click="StopProcess"/>
                                 <Button Content="Cancel and delete" Click="CancelProcess"/>
+                                <Button Content="Stop and keep output" Click="StopProcess"/>
                             </StackPanel>
                         </StackPanel>
                     </Flyout>
@@ -110,8 +110,8 @@
                             <TextBlock Text="Stop saves the video processed so far. Finishing buffered frames and saving may take a moment. Cancel deletes the partial output."
                                        TextWrapping="Wrap"/>
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="Stop and keep output" Click="StopProcess"/>
                                 <Button Content="Cancel and delete" Click="CancelProcess"/>
+                                <Button Content="Stop and keep output" Click="StopProcess"/>
                             </StackPanel>
                         </StackPanel>
                     </Flyout>
